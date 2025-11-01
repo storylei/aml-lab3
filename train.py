@@ -115,44 +115,44 @@ def main():
     # Parse arguments
     args = parse_args()
 
-    # Initialize wandb
+    # Set random seed
+    set_seed(args.seed)
+
+    # Load configuration
+    config = load_config(args.config)
+
+    # Initialize wandb after loading config
     wandb.init(project="image-classification", config={
-        "learning_rate": args.learning_rate,
-        "batch_size": args.batch_size,
-        "epochs": args.epochs,
+        "learning_rate": config['learning_rate'],
+        "batch_size": config['batch_size'],
+        "epochs": config['epochs'],
         "model": "ClassificationModel"
     })
 
-    # Set random seed
-    set_seed(args.seed)
-    
-    # Load configuration
-    config = load_config(args.config)
-    
     # Create checkpoint directory if it doesn't exist
     checkpoint_dir = Path(args.checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
-    
+
     # Initialize GradScaler for mixed precision training
     scaler = torch.amp.GradScaler(device,enabled=config['use_amp'])
-    
+
     # Create datasets and dataloaders
     train_dataset = TinyImageNetDataset(
         root_dir=args.data_dir,
         split='train',
         transform=get_train_transforms(config['input_size'])
     )
-    
+
     val_dataset = TinyImageNetDataset(
         root_dir=args.data_dir,
         split='val',
         transform=get_val_transforms(config['input_size'])
     )
-    
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=config['batch_size'],
@@ -160,7 +160,7 @@ def main():
         num_workers=config['num_workers'],
         pin_memory=True
     )
-    
+
     val_loader = DataLoader(
         val_dataset,
         batch_size=config['batch_size'],
@@ -168,7 +168,7 @@ def main():
         num_workers=config['num_workers'],
         pin_memory=True
     )
-    
+
     # Create model
     model = ClassificationModel(
         backbone=config['backbone'],
@@ -177,7 +177,7 @@ def main():
         num_classes=config['num_classes']
     )
     model = model.to(device)
-    
+
     # Define loss function and optimizer
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(
@@ -186,14 +186,14 @@ def main():
         momentum=config['momentum'],
         weight_decay=config['weight_decay']
     )
-    
+
     # Learning rate scheduler
     scheduler = optim.lr_scheduler.StepLR(
         optimizer,
         step_size=config['lr_step_size'],
         gamma=config['lr_gamma']
     )
-    
+
     # Resume from checkpoint if specified
     start_epoch = 0
     best_acc = 0.0
@@ -209,30 +209,30 @@ def main():
             print(f"Loaded checkpoint '{args.resume}' (epoch {checkpoint['epoch']})")
         else:
             print(f"No checkpoint found at '{args.resume}'")
-    
+
     # Training loop
     for epoch in range(start_epoch, config['epochs']):
         print(f"\nEpoch: {epoch+1}/{config['epochs']}")
-        
+
         # Train for one epoch
         train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, scaler, config['use_amp'])
-        
+
         # Log training metrics to wandb
         wandb.log({"train_loss": train_loss, "train_acc": train_acc, "epoch": epoch+1})
-        
+
         # Validate
         val_loss, val_acc = validate(model, val_loader, criterion, device, config['use_amp'])
-        
+
         # Log validation metrics to wandb
         wandb.log({"val_loss": val_loss, "val_acc": val_acc, "epoch": epoch+1})
-        
+
         # Update learning rate
         scheduler.step()
-        
+
         # Print statistics
         print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
         print(f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2f}%")
-        
+
         # Save checkpoint
         is_best = val_acc > best_acc
         best_acc = max(val_acc, best_acc)
@@ -243,11 +243,11 @@ def main():
             'optimizer': optimizer.state_dict(),
             'scheduler': scheduler.state_dict(),
         }, is_best, checkpoint_dir)
-        
+
         # Save model to wandb
         if is_best:
             wandb.save(os.path.join(checkpoint_dir, 'model_best.pth'))
-    
+
     print(f"Training completed. Best accuracy: {best_acc:.2f}%")
 
     # Finish wandb run
