@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from pathlib import Path
-from mldl_project_skeleton.models.classification_model import ClassificationModel
+from models.classification_model import ClassificationModel
 from dataset.tiny_imagenet import TinyImageNetDataset
 from dataset.augmentation import get_val_transforms
 import numpy as np
