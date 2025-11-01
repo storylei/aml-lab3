@@ -2,3 +2,4 @@ pyyaml
 torch
 torchvision
 tqdm
+wandb

@@ -12,6 +12,7 @@ from pathlib import Path
 from models.classification_model import ClassificationModel
 from dataset.tiny_imagenet import TinyImageNetDataset
 from dataset.augmentation import get_train_transforms, get_val_transforms
+import wandb
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Training script for image classification')
@@ -113,7 +114,15 @@ def validate(model, dataloader, criterion, device, use_amp):
 def main():
     # Parse arguments
     args = parse_args()
-    
+
+    # Initialize wandb
+    wandb.init(project="image-classification", config={
+        "learning_rate": args.learning_rate,
+        "batch_size": args.batch_size,
+        "epochs": args.epochs,
+        "model": "ClassificationModel"
+    })
+
     # Set random seed
     set_seed(args.seed)
     
@@ -208,8 +217,14 @@ def main():
         # Train for one epoch
         train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, scaler, config['use_amp'])
         
+        # Log training metrics to wandb
+        wandb.log({"train_loss": train_loss, "train_acc": train_acc, "epoch": epoch+1})
+        
         # Validate
         val_loss, val_acc = validate(model, val_loader, criterion, device, config['use_amp'])
+        
+        # Log validation metrics to wandb
+        wandb.log({"val_loss": val_loss, "val_acc": val_acc, "epoch": epoch+1})
         
         # Update learning rate
         scheduler.step()
@@ -228,8 +243,15 @@ def main():
             'optimizer': optimizer.state_dict(),
             'scheduler': scheduler.state_dict(),
         }, is_best, checkpoint_dir)
+        
+        # Save model to wandb
+        if is_best:
+            wandb.save(os.path.join(checkpoint_dir, 'model_best.pth'))
     
     print(f"Training completed. Best accuracy: {best_acc:.2f}%")
+
+    # Finish wandb run
+    wandb.finish()
 
 if __name__ == '__main__':
     main()
